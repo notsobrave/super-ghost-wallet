@@ -71,7 +71,23 @@ __sgw.enableBlindSigning()
 __sgw.findWalletConnectUri()  // the wc: URI behind a QR code
 ```
 
-## 5 · Other wallet kinds
+## 5 · Show your work (when a human is watching)
+
+If the user is watching the browser — or wants a screenshot that explains
+itself — turn on the in-page HUD. It is OFF by default and never intercepts
+clicks (toasts are `pointer-events: none`, everything lives in a shadow root).
+
+```js
+__sgw.hud(true)                                   // capsule toasts + log panel
+__sgw.hud({ toasts: true, panel: false, position: "bottom-left" })
+__sgw.say("Connecting wallet", "clicking Connect")// narrate your own step first
+__sgw.hud(false)
+```
+
+Turn it on when the task is demonstrative ("show me", "walk me through",
+screenshots for a human). Leave it off for pure assertion runs.
+
+## 6 · Other wallet kinds
 
 - **Solana**: the same mnemonic derives `m/44'/501'/i'/0'` accounts and the
   wallet registers via **Wallet Standard** — `@solana/wallet-adapter` dApps

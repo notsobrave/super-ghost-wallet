@@ -38,6 +38,8 @@ declare global {
       setDelay(ms: number): number;
       waitForRequest(method: string): Promise<{ method: string; status: string }>;
       simulateDisconnect(): void;
+      hud(on?: boolean | Record<string, unknown>): Record<string, unknown>;
+      say(text: string, detail?: string): string;
     };
     ethereum?: { isSuperGhostWallet?: boolean };
   }
@@ -132,6 +134,53 @@ test("waitForRequest resolves with the decoded SIWE entry", async ({ page }) => 
   expect(entry.status).toBe("approved");
   const log = await page.evaluate(() => window.__sgw.getLog());
   expect(log.at(-1)?.decoded?.kind).toBe("siwe");
+});
+
+test("HUD narrates wallet activity in the page", async ({ page }) => {
+  await page.goto("/");
+  // absent until asked for
+  expect(await page.locator("sgw-hud").count()).toBe(0);
+
+  await page.evaluate(() => window.__sgw.hud(true));
+  await page.evaluate(() => window.__sgw.say("Connecting wallet", "agent clicked Connect"));
+  await page.click("#connect");
+  await page.click("#sign");
+
+  const hud = page.locator("sgw-hud");
+  await expect(hud.locator(".panel-head .title")).toHaveText("Super Ghost Wallet");
+  // one row for the narration + one per wallet action
+  await expect(hud.locator(".row")).toHaveCount(3);
+  await expect(hud.locator(".row .title").nth(1)).toHaveText("Connect");
+  await expect(hud.locator(".row .title").nth(2)).toHaveText("Sign-in (SIWE)");
+  await expect(hud.locator(".toast").first()).toBeVisible();
+  // let the capsule finish stretching before the screenshot artifact
+  await expect(hud.locator(".toast").first()).toHaveAttribute("data-open", "true");
+  await page.waitForTimeout(450);
+  await page.screenshot({ path: "test-results/hud.png" });
+
+  // the dApp keeps working with the overlay up: toasts don't eat clicks
+  await page.evaluate(() => window.__sgw.hud({ position: "top-right" }));
+  await page.click("#sign");
+  await expect(hud.locator(".row")).toHaveCount(4);
+
+  await page.evaluate(() => window.__sgw.hud(false));
+  await expect(page.locator("sgw-hud")).toHaveCount(0);
+});
+
+test("HUD shows rejections distinctly", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => window.__sgw.hud(true));
+  await page.click("#connect");
+  await page.evaluate(() => window.__sgw.setMode("reject"));
+  await page.click("#sign");
+  const toast = page.locator("sgw-hud .toast").last();
+  await expect(toast).toHaveAttribute("data-status", "rejected");
+  await expect(toast.locator(".title")).toContainText("rejected");
+  await expect(page.locator("sgw-hud .row .dot").last()).toHaveAttribute(
+    "data-status",
+    "rejected",
+  );
+  await page.evaluate(() => window.__sgw.setMode("auto"));
 });
 
 // Requires a local anvil (or any dev RPC) on 127.0.0.1:8545.

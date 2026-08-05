@@ -326,7 +326,13 @@ export class GhostProvider {
   }
 
   private settle(entry: LogEntry) {
-    this.onEvent({ type: "settled", id: entry.id, method: entry.method, status: entry.status });
+    this.onEvent({
+      type: "settled",
+      id: entry.id,
+      method: entry.method,
+      status: entry.status,
+      entry,
+    });
     const matched = this.waiters.filter(
       (w) => w.method === entry.method || w.method === "*",
     );

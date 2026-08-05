@@ -1,6 +1,6 @@
 {
   "name": "super-ghost-wallet",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Headless auto-signing test wallet extension for agent-driven dApp testing",
   "type": "module",
   "private": true,

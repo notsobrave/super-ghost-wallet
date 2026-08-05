@@ -35,6 +35,11 @@ export interface GhostConfig {
   profile: "ledger" | "mobile" | null;
   /** Ledger profile: allow EIP-712 / calldata signing (device setting). */
   blindSigning: boolean;
+  /** In-page toasts announcing each wallet action (for humans watching). */
+  hudToasts: boolean;
+  /** In-page side panel holding the full request log. */
+  hudPanel: boolean;
+  hudPosition: "top-right" | "bottom-right" | "top-left" | "bottom-left";
 }
 
 export const PROFILE_DELAYS: Record<string, number> = {
@@ -68,6 +73,10 @@ export const DEFAULT_CONFIG: GhostConfig = {
   impersonate: null,
   profile: null,
   blindSigning: true,
+  // Off by default: an overlay must never surprise an existing test suite.
+  hudToasts: false,
+  hudPanel: false,
+  hudPosition: "top-right",
 };
 
 /** Chains super-ghost-wallet refuses without allowMainnet (real-funds networks). */
@@ -112,6 +121,8 @@ export type SgwEvent = {
   id: number;
   method: string;
   status?: LogEntry["status"];
+  /** The full log entry — present on `settled`, so listeners need no lookup. */
+  entry?: LogEntry;
 };
 
 export interface PendingRequest {

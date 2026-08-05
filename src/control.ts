@@ -1,12 +1,23 @@
 import type { GhostProvider } from "./provider.js";
+import type { Hud } from "./hud.js";
+import { HUD_ATTR } from "./hud.js";
 import type { GhostConfig, Mode } from "./types.js";
 
 /**
  * The in-page control plane an agent drives via evaluate_script.
  * Everything returns plain JSON-serializable data.
  */
-export function buildControlApi(provider: GhostProvider) {
+export function buildControlApi(provider: GhostProvider, hud?: Hud) {
   return {
+    /** Narrate a step of your own in the HUD ("about to connect…"). No-op when off. */
+    say: (text: string, detail?: string) => {
+      hud?.note(text, detail);
+      return "ok";
+    },
+    clearHud: () => {
+      hud?.clear();
+      return "ok";
+    },
     getState() {
       const { mnemonic: _hidden, privateKeys: _hidden2, ...safe } =
         provider.config;
@@ -71,6 +82,28 @@ export function buildControlApi(provider: GhostProvider) {
      */
     findWalletConnectUri: () => findWcUri(),
     clearWalletConnectUri: () => clearWcUri(),
+    /**
+     * Show what the wallet is doing, in the page: `hud(true)` for toasts +
+     * log panel, or pick parts — `hud({ toasts: true, panel: false })`.
+     * Off by default so it never disturbs an existing suite. Toasts are
+     * pointer-events:none, so they can't intercept a click.
+     */
+    hud: (on: boolean | Partial<{ toasts: boolean; panel: boolean; position: GhostConfig["hudPosition"] }> = true) => {
+      const patch =
+        typeof on === "boolean"
+          ? { hudToasts: on, hudPanel: on }
+          : {
+              ...(on.toasts !== undefined ? { hudToasts: on.toasts } : {}),
+              ...(on.panel !== undefined ? { hudPanel: on.panel } : {}),
+              ...(on.position ? { hudPosition: on.position } : {}),
+            };
+      provider.applyConfig(patch);
+      return {
+        toasts: provider.config.hudToasts,
+        panel: provider.config.hudPanel,
+        position: provider.config.hudPosition,
+      };
+    },
     pending: () => provider.pending(),
     approve: (id: number) => provider.approve(id),
     deny: (id: number) => provider.deny(id),
@@ -129,6 +162,9 @@ export function installClipboardHook() {
 function* walk(root: Document | ShadowRoot | Element): Generator<Element> {
   const els = root.querySelectorAll("*");
   for (const el of els) {
+    // Never scan our own HUD: it renders URIs it was told about, and finding
+    // one there would just echo a stale pairing back at the caller.
+    if (el.hasAttribute(HUD_ATTR)) continue;
     yield el;
     if ((el as Element & { shadowRoot?: ShadowRoot }).shadowRoot)
       yield* walk((el as Element & { shadowRoot: ShadowRoot }).shadowRoot);

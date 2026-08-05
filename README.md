@@ -116,6 +116,35 @@ Events: every sensitive request dispatches `sgw:request` CustomEvents on `window
 - `eth_sign` — disabled (legacy footgun).
 - Everything else (`eth_call`, `eth_estimateGas`, …) — passthrough to the RPC.
 
+## Watching the agent work — the in-page HUD
+
+When a human is watching an agent drive the browser, the wallet can narrate
+itself: capsule toasts announcing each action, and a side panel holding the
+full log.
+
+```js
+__sgw.hud(true)                                  // toasts + panel
+__sgw.hud({ toasts: true, panel: false })        // pick parts
+__sgw.hud({ position: "bottom-left" })           // any corner
+__sgw.say("Connecting wallet", "clicked Connect")// narrate your own step
+__sgw.clearHud()
+__sgw.hud(false)
+```
+
+Toasts are pill-shaped and stretch a body out of themselves via an SVG gooey
+filter (inspired by [Sileo](https://sileo.aaryan.design)), showing what was
+signed — decoded, not hex. The panel lists every request with a timestamp and
+a status dot.
+
+Design constraints that matter for testing:
+
+- **Off by default** — an overlay must never silently change an existing suite.
+- **Shadow DOM under its own `<sgw-hud>` host** — the dApp's styles and
+  `document.querySelector` sweeps never see it, and the wallet's own URI
+  scanner skips it.
+- **`pointer-events: none` on toasts** — they cannot intercept a click meant
+  for the dApp.
+
 ## Solana
 
 The same mnemonic derives Solana accounts at `m/44'/501'/i'/0'` (the Phantom /

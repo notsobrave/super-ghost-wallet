@@ -1,5 +1,6 @@
 import { GhostProvider } from "./provider.js";
 import { buildControlApi, installClipboardHook } from "./control.js";
+import { Hud } from "./hud.js";
 import { isBridgeMessage, post } from "./bridge.js";
 import { registerSolanaWallet } from "./solana.js";
 import type { GhostConfig } from "./types.js";
@@ -20,18 +21,35 @@ window.addEventListener("message", (e) => {
   }
 });
 
+const hud = new Hud(
+  { toasts: false, panel: false, position: "top-right" },
+  () => `${provider.identity().name} · ${provider.activeAccount.address.slice(0, 10)}…`,
+);
+
+const syncHud = () =>
+  hud.setOptions({
+    toasts: provider.config.hudToasts,
+    panel: provider.config.hudPanel,
+    position: provider.config.hudPosition,
+  });
+
 provider = new GhostProvider({}, persist, (e) => {
   // Observation hook: pages/tests can listen without polling getLog().
   window.dispatchEvent(new CustomEvent("sgw:request", { detail: e }));
-  // Identity may have changed (impersonate) — re-announce EIP-6963.
-  if (e.type === "config") announce();
+  if (e.type === "settled" && e.entry) hud.push(e.entry);
+  if (e.type === "config") {
+    // Identity may have changed (impersonate) — re-announce EIP-6963.
+    announce();
+    syncHud();
+  }
 });
 post("get-config");
+syncHud();
 
 // ── expose EIP-1193 surface ─────────────────────────────────────────
 const anyWindow = window as never as Record<string, unknown>;
 if (!anyWindow.ethereum) anyWindow.ethereum = provider;
-anyWindow.__sgw = buildControlApi(provider);
+anyWindow.__sgw = buildControlApi(provider, hud);
 installClipboardHook();
 
 // ── EIP-6963 announce ───────────────────────────────────────────────

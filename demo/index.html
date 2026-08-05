@@ -29,7 +29,11 @@
     const $ = (id) => document.getElementById(id);
     const providers = [];
     window.addEventListener("eip6963:announceProvider", (e) => {
-      providers.push(e.detail);
+      // dedupe by uuid, like wagmi/AppKit do — a wallet may re-announce
+      // (e.g. after changing its displayed identity)
+      const i = providers.findIndex((p) => p.info.uuid === e.detail.info.uuid);
+      if (i === -1) providers.push(e.detail);
+      else providers[i] = e.detail;
       $("providers").textContent = providers.map((p) => p.info.name).join(", ");
     });
     window.dispatchEvent(new Event("eip6963:requestProvider"));
