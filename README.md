@@ -86,6 +86,15 @@ __sgw.simulateDisconnect()                     // 4900 + accountsChanged([]) —
 __sgw.simulateAccountsChanged(2) / .simulateChainChanged()
 ```
 
+```js
+// identity & keys
+__sgw.generateWallet(5)      // fresh RANDOM test wallet — returns the mnemonic ONCE
+__sgw.impersonate("metamask" | "phantom" | null)   // for dApps with hardcoded lists
+__sgw.setProfile("ledger")   // hardware wallet: ~3s device confirm + blind signing OFF
+__sgw.enableBlindSigning()   // the device setting a real Ledger makes you toggle
+__sgw.findWalletConnectUri() // the wc: URI behind the QR code (see below)
+```
+
 Log entries carry a `decoded` field: UTF-8 text for `personal_sign`, **parsed SIWE
 fields** (domain / address / nonce / statement) when the message is EIP-4361,
 `EIP-712 <primaryType> @ <domain>` for typed data, and a value/target summary for
@@ -106,6 +115,56 @@ Events: every sensitive request dispatches `sgw:request` CustomEvents on `window
   configured RPC (anvil, hardhat, testnet…).
 - `eth_sign` — disabled (legacy footgun).
 - Everything else (`eth_call`, `eth_estimateGas`, …) — passthrough to the RPC.
+
+## Solana
+
+The same mnemonic derives Solana accounts at `m/44'/501'/i'/0'` (the Phantom /
+Solflare path, pinned against the official SLIP-0010 vectors), and the wallet
+registers itself through the **Wallet Standard** — so `@solana/wallet-adapter`,
+Phantom-aware dApps and friends discover it like a real Solana wallet.
+
+Supported: `standard:connect` / `disconnect` / `events`, `solana:signMessage`,
+`solana:signTransaction` (legacy + v0), `solana:signAndSendTransaction`,
+and `solana:signIn` (**SIWS**). Cluster defaults to devnet; mainnet is refused
+unless `allowMainnet: true`.
+
+## Not just a browser extension — QR / mobile wallets
+
+Some dApps only offer **WalletConnect**: they show a QR code and wait for a
+phone to scan it. A browser extension can't answer that. So the package also
+ships the *phone side* — a WalletConnect v2 peer that runs in Node and pairs
+from the same `wc:` URI the QR encodes:
+
+```sh
+# 1. in the browser, ask the page for the URI behind the QR:
+#    window.__sgw.findWalletConnectUri()
+# 2. hand it to the remote wallet (it approves the session and signs):
+SGW_WC_PROJECT_ID=<your-project-id> node bin/sgw.mjs pair "wc:…@2?…" --delay 800
+```
+
+Or drive it from a test:
+
+```js
+import { RemoteWallet } from "super-ghost-wallet/dist/walletconnect.js";
+const wallet = await new RemoteWallet({ projectId, delayMs: 800 }).init();
+await wallet.pair(uri);          // session auto-approved
+wallet.log;                      // what the dApp asked to sign, decoded
+```
+
+`findWalletConnectUri()` scans the light DOM, **shadow roots** (AppKit,
+RainbowKit) and clipboard writes, so it works without ever decoding an image.
+
+> Two WalletConnect clients in one process share Core storage — pass distinct
+> `storagePrefix` / `customStoragePrefix` values when a test runs both sides.
+
+## Simulating other wallet kinds
+
+| Want to test | Do this |
+|---|---|
+| A hardware wallet (slow confirm, blind-signing prompt) | `__sgw.setProfile("ledger")` |
+| A phone wallet over WalletConnect | `sgw pair <uri>` (above) |
+| A dApp that only lists MetaMask / Phantom | `__sgw.impersonate("metamask")` |
+| A brand-new user with no history | `__sgw.generateWallet()` |
 
 ## Tests
 

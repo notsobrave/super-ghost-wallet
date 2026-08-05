@@ -21,7 +21,26 @@ export interface GhostConfig {
   allowMainnet: boolean;
   /** If true, eth_accounts returns accounts before eth_requestAccounts. */
   autoConnect: boolean;
+  /** Solana cluster the wallet reports/signs for. */
+  solanaCluster: "devnet" | "testnet" | "localnet" | "mainnet";
+  /** cluster -> RPC url. */
+  solanaRpcUrls: Record<string, string>;
+  /** Present as another wallet ("metamask" | "phantom") for dApps with hardcoded lists. */
+  impersonate: "metamask" | "phantom" | null;
+  /**
+   * Behavioral profile: "ledger" simulates a hardware wallet (multi-second
+   * device confirmation, blind-signing disabled by default), "mobile" a
+   * slower remote signer. null = instant.
+   */
+  profile: "ledger" | "mobile" | null;
+  /** Ledger profile: allow EIP-712 / calldata signing (device setting). */
+  blindSigning: boolean;
 }
+
+export const PROFILE_DELAYS: Record<string, number> = {
+  ledger: 3000,
+  mobile: 1200,
+};
 
 /** Anvil / Hardhat well-known dev mnemonic. Test keys only — never real funds. */
 export const DEFAULT_MNEMONIC =
@@ -39,6 +58,16 @@ export const DEFAULT_CONFIG: GhostConfig = {
   delayMs: 0,
   allowMainnet: false,
   autoConnect: false,
+  solanaCluster: "devnet",
+  solanaRpcUrls: {
+    devnet: "https://api.devnet.solana.com",
+    testnet: "https://api.testnet.solana.com",
+    localnet: "http://127.0.0.1:8899",
+    mainnet: "https://api.mainnet-beta.solana.com",
+  },
+  impersonate: null,
+  profile: null,
+  blindSigning: true,
 };
 
 /** Chains super-ghost-wallet refuses without allowMainnet (real-funds networks). */
@@ -79,7 +108,7 @@ export interface DecodedRequest {
 }
 
 export type SgwEvent = {
-  type: "request" | "settled";
+  type: "request" | "settled" | "config";
   id: number;
   method: string;
   status?: LogEntry["status"];

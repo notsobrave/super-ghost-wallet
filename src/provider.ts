@@ -17,6 +17,7 @@ import {
 import {
   DEFAULT_CONFIG,
   MAINNET_CHAIN_IDS,
+  PROFILE_DELAYS,
   ProviderRpcError,
   USER_REJECTED,
   type GhostConfig,
@@ -26,6 +27,16 @@ import {
   type SgwEvent,
 } from "./types.js";
 import { decodeRequest } from "./decode.js";
+import {
+  buildSiwsMessage,
+  deriveSolanaAccounts,
+  signSolanaTransaction,
+  solSign,
+  type SiwsInput,
+  type SolanaAccount,
+} from "./solana.js";
+import { generateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 
 type Account = HDAccount | PrivateKeyAccount;
 type Listener = (...args: unknown[]) => void;
@@ -39,6 +50,11 @@ const SENSITIVE = new Set([
   "eth_signTypedData_v3",
   "eth_signTypedData_v4",
   "eth_sendTransaction",
+  "solana_connect",
+  "solana_signMessage",
+  "solana_signTransaction",
+  "solana_signAndSendTransaction",
+  "solana_signIn",
 ]);
 
 const LOG_CAP = 500;
@@ -65,6 +81,8 @@ export class GhostProvider {
 
   config: GhostConfig;
   private accounts: Account[] = [];
+  private solAccounts: SolanaAccount[] = [];
+  private solanaConnected = false;
   private connected = false;
   private listeners = new Map<string, Set<Listener>>();
   private log: LogEntry[] = [];
@@ -84,6 +102,7 @@ export class GhostProvider {
     this.persist = persist;
     this.onEvent = onEvent;
     this.assertChainAllowed(this.config.chainId);
+    this.assertSolanaClusterAllowed(this.config.solanaCluster);
     this.deriveAccounts();
   }
 
@@ -96,7 +115,45 @@ export class GhostProvider {
     }
     for (const pk of this.config.privateKeys) out.push(privateKeyToAccount(pk));
     this.accounts = out;
+    this.solAccounts = deriveSolanaAccounts(
+      this.config.mnemonic,
+      this.config.accountCount,
+    );
     if (this.config.accountIndex >= out.length) this.config.accountIndex = 0;
+  }
+
+  get activeSolanaAccount(): SolanaAccount {
+    return this.solAccounts[Math.min(this.config.accountIndex, this.solAccounts.length - 1)];
+  }
+
+  get solanaAddresses(): string[] {
+    return this.solAccounts.map((a) => a.address);
+  }
+
+  /** Identity shown to dApps — swapped wholesale when impersonating. */
+  identity(): { name: string; rdns: string; isMetaMask: boolean } {
+    switch (this.config.impersonate) {
+      case "metamask":
+        return { name: "MetaMask", rdns: "io.metamask", isMetaMask: true };
+      case "phantom":
+        return { name: "Phantom", rdns: "app.phantom", isMetaMask: false };
+      default:
+        return { name: "Super Ghost Wallet", rdns: "dev.superghostwallet", isMetaMask: false };
+    }
+  }
+
+  get isMetaMask(): boolean {
+    return this.identity().isMetaMask;
+  }
+
+  /**
+   * Replace the wallet with a freshly generated random TEST wallet.
+   * Returns the mnemonic once — it is never exposed through getState().
+   */
+  generateWallet(count = 10): { mnemonic: string; addresses: string[]; solanaAddresses: string[] } {
+    const mnemonic = generateMnemonic(wordlist, 128);
+    this.applyConfig({ mnemonic, privateKeys: [], accountIndex: 0, accountCount: count });
+    return { mnemonic, addresses: this.addresses, solanaAddresses: this.solanaAddresses };
   }
 
   get activeAccount(): Account {
@@ -124,8 +181,10 @@ export class GhostProvider {
     const prevAddr = this.activeAccount?.address;
     this.config = { ...this.config, ...config };
     this.assertChainAllowed(this.config.chainId);
+    this.assertSolanaClusterAllowed(this.config.solanaCluster);
     this.deriveAccounts();
     if (save) this.persist(this.config);
+    this.onEvent({ type: "config", id: 0, method: "config" });
     if (this.config.chainId !== prevChain)
       this.emit("chainChanged", numberToHex(this.config.chainId));
     if (this.connected && this.activeAccount.address !== prevAddr)
@@ -161,6 +220,35 @@ export class GhostProvider {
         4100,
         `Super Ghost Wallet: chain ${chainId} looks like a real-funds network. ` +
           `Set allowMainnet: true to override (test keys only!).`,
+      );
+  }
+
+  /**
+   * Ledger profile with blind signing off: EIP-712 and calldata-carrying
+   * transactions fail the way a real device does (0x6985) until the user
+   * "enables blind signing" (enableBlindSigning() / configure()).
+   */
+  private assertBlindSigning(method: string, params: unknown[]) {
+    if (this.config.profile !== "ledger" || this.config.blindSigning) return;
+    const tx = params[0] as Record<string, unknown> | undefined;
+    const needsBlind =
+      method.startsWith("eth_signTypedData") ||
+      (method === "eth_sendTransaction" &&
+        typeof tx?.data === "string" &&
+        tx.data !== "0x");
+    if (needsBlind)
+      throw new ProviderRpcError(
+        -32603,
+        "Ledger device: Condition of use not satisfied (0x6985) — please enable Blind signing in the Ethereum app settings",
+      );
+  }
+
+  private assertSolanaClusterAllowed(cluster: string) {
+    if (cluster === "mainnet" && !this.config.allowMainnet)
+      throw new ProviderRpcError(
+        4100,
+        "Super Ghost Wallet: solana mainnet is a real-funds network. " +
+          "Set allowMainnet: true to override (test keys only!).",
       );
   }
 
@@ -315,8 +403,12 @@ export class GhostProvider {
         throw new ProviderRpcError(f.code, f.message);
       }
       await this.gate(id, method, params);
-      if (sensitive && this.config.delayMs > 0)
-        await new Promise((r) => setTimeout(r, this.config.delayMs));
+      const delay =
+        this.config.delayMs ||
+        (this.config.profile ? PROFILE_DELAYS[this.config.profile] : 0);
+      if (sensitive && delay > 0)
+        await new Promise((r) => setTimeout(r, delay));
+      this.assertBlindSigning(method, params);
       const result = await this.handle(method, params);
       entry.status = sensitive ? "approved" : "passthrough";
       entry.result = result;
@@ -406,6 +498,42 @@ export class GhostProvider {
         return null;
       }
 
+      case "solana_connect": {
+        this.solanaConnected = true;
+        return { address: this.activeSolanaAccount.address };
+      }
+      case "solana_disconnect": {
+        this.solanaConnected = false;
+        return null;
+      }
+      case "solana_signMessage": {
+        const [message] = params as [ArrayLike<number>];
+        return { signature: solSign(new Uint8Array(message), this.activeSolanaAccount) };
+      }
+      case "solana_signTransaction": {
+        const [tx] = params as [ArrayLike<number>];
+        return signSolanaTransaction(new Uint8Array(tx), this.activeSolanaAccount);
+      }
+      case "solana_signAndSendTransaction": {
+        const [tx] = params as [ArrayLike<number>];
+        const { signedTransaction, signature } = signSolanaTransaction(
+          new Uint8Array(tx),
+          this.activeSolanaAccount,
+        );
+        await this.solanaSend(signedTransaction);
+        return signature;
+      }
+      case "solana_signIn": {
+        const [input] = params as [SiwsInput | undefined];
+        const account = this.activeSolanaAccount;
+        const fallbackDomain =
+          (globalThis as { location?: { host?: string } }).location?.host ?? "localhost";
+        const text = buildSiwsMessage(input ?? {}, fallbackDomain, account.address);
+        const signedMessage = new TextEncoder().encode(text);
+        this.solanaConnected = true;
+        return { signedMessage, signature: solSign(signedMessage, account) };
+      }
+
       case "wallet_requestPermissions":
       case "wallet_getPermissions":
         return [{ parentCapability: "eth_accounts" }];
@@ -460,6 +588,37 @@ export class GhostProvider {
       maxFeePerGas: big(tx.maxFeePerGas),
       maxPriorityFeePerGas: big(tx.maxPriorityFeePerGas),
     } as never);
+  }
+
+  solanaRpcUrl(): string {
+    const url = this.config.solanaRpcUrls[this.config.solanaCluster];
+    if (!url)
+      throw new ProviderRpcError(
+        4901,
+        `Super Ghost Wallet: no RPC url for solana cluster ${this.config.solanaCluster}`,
+      );
+    return url;
+  }
+
+  private async solanaSend(signed: Uint8Array) {
+    let bin = "";
+    for (const b of signed) bin += String.fromCharCode(b);
+    const res = await fetch(this.solanaRpcUrl(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: this.nextId++,
+        method: "sendTransaction",
+        params: [btoa(bin), { encoding: "base64" }],
+      }),
+    });
+    const body = (await res.json()) as {
+      result?: string;
+      error?: { code: number; message: string };
+    };
+    if (body.error) throw new ProviderRpcError(body.error.code, body.error.message);
+    return body.result;
   }
 
   private async passthrough(method: string, params: unknown[]) {

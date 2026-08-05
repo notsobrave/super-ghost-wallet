@@ -63,6 +63,31 @@ await __sgw.waitForRequest("personal_sign")  // sync on the next settled request
 __sgw.simulateDisconnect()                   // test reconnection paths
 ```
 
+```js
+__sgw.generateWallet(5)       // fresh RANDOM test wallet (EVM + Solana), mnemonic returned once
+__sgw.impersonate("metamask") // dApp only lists MetaMask/Phantom? become it
+__sgw.setProfile("ledger")    // hardware wallet: ~3s confirm + blind signing OFF (0x6985)
+__sgw.enableBlindSigning()
+__sgw.findWalletConnectUri()  // the wc: URI behind a QR code
+```
+
+## 5 · Other wallet kinds
+
+- **Solana**: the same mnemonic derives `m/44'/501'/i'/0'` accounts and the
+  wallet registers via **Wallet Standard** — `@solana/wallet-adapter` dApps
+  discover it. Supports signMessage / signTransaction / signAndSend / **SIWS**.
+  Devnet by default; mainnet refused unless `allowMainnet: true`.
+- **QR / mobile (WalletConnect)**: when a dApp only offers a QR code, an
+  extension cannot answer. Get the URI in-page with
+  `__sgw.findWalletConnectUri()` (scans DOM, shadow roots, clipboard), then run
+  the Node-side peer that pairs with it:
+  `SGW_WC_PROJECT_ID=<id> node ${CLAUDE_PLUGIN_ROOT}/bin/sgw.mjs pair "<uri>"`
+  (or `import { RemoteWallet } from "…/dist/walletconnect.js"` in a test).
+  Requires a WalletConnect Cloud project id.
+- **Hardware (Ledger)**: `setProfile("ledger")` adds a multi-second device
+  confirmation and turns blind signing OFF, so EIP-712 and calldata
+  transactions fail with the real `0x6985` error until `enableBlindSigning()`.
+
 `getLog()` entries include `decoded`: UTF-8 text, parsed SIWE fields
 (domain/nonce/address), or `EIP-712 <primaryType>` — assert on meaning, not hex.
 `sgw:request` CustomEvents fire on `window` for observation without polling.
