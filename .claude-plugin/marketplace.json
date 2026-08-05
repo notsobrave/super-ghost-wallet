@@ -1,0 +1,15 @@
+{
+  "name": "super-ghost-wallet",
+  "description": "Headless auto-signing test wallet for agent-driven dApp testing — connect, SIWE auth, transactions with no human in the loop.",
+  "owner": {
+    "name": "notsobrave",
+    "url": "https://github.com/notsobrave"
+  },
+  "plugins": [
+    {
+      "name": "super-ghost-wallet",
+      "source": "./",
+      "description": "Headless auto-signing test wallet extension so AI agents can test wallet-gated dApp UIs (connect, SIWE auth, transactions) with no human in the loop. Test keys only — mainnet refused by default."
+    }
+  ]
+}

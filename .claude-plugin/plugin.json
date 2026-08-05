@@ -1,0 +1,13 @@
+{
+  "name": "super-ghost-wallet",
+  "version": "0.3.0",
+  "description": "Headless auto-signing test wallet (Chrome MV3 extension) so AI agents can test dApp flows — connect, SIWE/signature auth, transactions — without a human approving wallet popups. Test keys only.",
+  "author": {
+    "name": "notsobrave",
+    "url": "https://github.com/notsobrave"
+  },
+  "homepage": "https://github.com/notsobrave/super-ghost-wallet",
+  "repository": "https://github.com/notsobrave/super-ghost-wallet",
+  "license": "MIT",
+  "keywords": ["wallet", "dapp", "testing", "eip-6963", "playwright", "web3"]
+}

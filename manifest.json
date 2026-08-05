@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Super Ghost Wallet",
+  "version": "0.3.0",
+  "description": "Headless auto-signing TEST wallet for agent-driven dApp testing. Test keys only — never real funds.",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["inpage.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

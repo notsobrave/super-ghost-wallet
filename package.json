@@ -1,0 +1,29 @@
+{
+  "name": "super-ghost-wallet",
+  "version": "0.3.0",
+  "description": "Headless auto-signing test wallet extension for agent-driven dApp testing",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/notsobrave/super-ghost-wallet.git"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "e2e": "npm run build && playwright test",
+    "demo": "node demo/serve.mjs"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^26.1.2",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

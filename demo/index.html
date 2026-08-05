@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Super Ghost Wallet demo dApp</title>
+  <style>
+    body { font: 14px/1.5 ui-monospace, monospace; background: #0d1017; color: #d7dae0; max-width: 720px; margin: 3rem auto; padding: 0 1rem; }
+    button { font: inherit; background: #232838; color: inherit; border: 1px solid #3a4157; border-radius: 6px; padding: .5rem 1rem; margin-right: .5rem; cursor: pointer; }
+    .row { margin: 1rem 0; }
+    .val { color: #8b8bf4; word-break: break-all; }
+    .err { color: #f47171; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>👻 Super Ghost Wallet demo</h1>
+  <div class="row">EIP-6963 providers: <span id="providers" class="val">(none)</span></div>
+  <div class="row">
+    <button id="connect">Connect</button>
+    <button id="sign">Sign-In (SIWE-style)</button>
+    <button id="tx">Send 0.01 ETH</button>
+  </div>
+  <div class="row">Account: <span id="account" class="val">—</span></div>
+  <div class="row">Message:<pre id="msg" class="val">—</pre></div>
+  <div class="row">Signature: <span id="sig" class="val">—</span></div>
+  <div class="row">Tx hash: <span id="txhash" class="val">—</span></div>
+  <div class="row">Error: <span id="error" class="err">—</span></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const providers = [];
+    window.addEventListener("eip6963:announceProvider", (e) => {
+      providers.push(e.detail);
+      $("providers").textContent = providers.map((p) => p.info.name).join(", ");
+    });
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+
+    const wallet = () => providers[0]?.provider ?? window.ethereum;
+    const toHex = (s) => "0x" + [...new TextEncoder().encode(s)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    let account = null;
+
+    const guard = (fn) => async () => {
+      $("error").textContent = "—";
+      try { await fn(); } catch (e) { $("error").textContent = `${e.code ?? ""} ${e.message}`; }
+    };
+
+    $("connect").onclick = guard(async () => {
+      [account] = await wallet().request({ method: "eth_requestAccounts" });
+      $("account").textContent = account;
+    });
+
+    $("sign").onclick = guard(async () => {
+      if (!account) throw new Error("connect first");
+      const message = [
+        `${location.host} wants you to sign in with your Ethereum account:`,
+        account, "",
+        "Sign in to the Super Ghost Wallet demo.", "",
+        `URI: ${location.origin}`, "Version: 1", "Chain ID: 31337",
+        `Nonce: ${Math.random().toString(36).slice(2, 10)}`,
+        `Issued At: ${new Date().toISOString()}`,
+      ].join("\n");
+      $("msg").textContent = message;
+      const sig = await wallet().request({ method: "personal_sign", params: [toHex(message), account] });
+      $("sig").textContent = sig;
+    });
+
+    $("tx").onclick = guard(async () => {
+      if (!account) throw new Error("connect first");
+      const hash = await wallet().request({
+        method: "eth_sendTransaction",
+        params: [{ from: account, to: account, value: "0x2386f26fc10000" }],
+      });
+      $("txhash").textContent = hash;
+    });
+  </script>
+</body>
+</html>
